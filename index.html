@@ -445,6 +445,7 @@
 
                 <div style="margin-top: 20px;">
                     <button class="btn-primary" onclick="exportAllPDF()" style="width: 100%; margin-bottom: 10px;">📄 דוח PDF כללי</button>
+                    <button class="btn-primary" onclick="exportSelectedToWord()" style="width: 100%; margin-bottom: 10px; background: #06a77d;">📋 Export to Word</button>
                     <button class="btn-secondary" onclick="clearAllData()" style="width: 100%;">🗑️ מחק הכל</button>
                 </div>
             </div>
@@ -669,6 +670,56 @@
                     showAlert('❌ שגיאה: ' + error.message, 'error');
                 }
             }
+        }
+
+        async function exportSelectedToWord() {
+            try {
+                const tests = await getTests();
+                
+                if (tests.length === 0) {
+                    showAlert('❌ אין בדיקות לייצוא', 'error');
+                    return;
+                }
+
+                // אם יש רק בדיקה אחת, יצא אותה
+                if (tests.length === 1) {
+                    exportTestAsJSON(tests[0]);
+                    return;
+                }
+
+                // אחרת, שאל המשתמש איזה בדיקה
+                const testIndex = prompt(`בחר בדיקה (1-${tests.length}):\n\n` + 
+                    tests.map((t, i) => `${i+1}. ${t.locality} - ${t.meter} (${new Date(t.timestamp).toLocaleString('he-IL')})`).join('\n'));
+                
+                if (testIndex && !isNaN(testIndex)) {
+                    const idx = parseInt(testIndex) - 1;
+                    if (idx >= 0 && idx < tests.length) {
+                        exportTestAsJSON(tests[idx]);
+                    }
+                }
+            } catch (error) {
+                showAlert('❌ שגיאה: ' + error.message, 'error');
+            }
+        }
+
+        function exportTestAsJSON(test) {
+            // צור JSON
+            const json = JSON.stringify(test, null, 2);
+            
+            // צור blob
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            // יצור link להורדה
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `בדיקה_${test.locality}_${test.date}_${test.testTime.replace(':', '-')}.json`;
+            link.click();
+            
+            // נקה
+            URL.revokeObjectURL(url);
+            
+            showAlert('✅ JSON הורד! עכשיו:\n1. התקן python-docx: pip install python-docx\n2. הרץ: python3 water_report_generator.py [json_file] [output_docx]', 'success');
         }
 
         // ==================== PDF Generation ====================
