@@ -114,7 +114,19 @@
             transition: border-color 0.3s;
         }
 
-        input:focus, select:focus {
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            text-align: right;
+            direction: rtl;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(0, 119, 190, 0.1);
@@ -395,6 +407,16 @@
                         <input type="number" id="pH" step="0.01" placeholder="7.0" min="0" max="14" required>
                     </div>
 
+                    <div class="form-group">
+                        <label for="testTime">שעת הבדיקה *</label>
+                        <input type="time" id="testTime" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">תיאור האירוע / הערות</label>
+                        <textarea id="description" placeholder="לדוגמא: בדיקה בנקודת הפצה, טמפרטורה 25°C..." style="resize: vertical; min-height: 80px;"></textarea>
+                    </div>
+
                     <div class="button-group">
                         <button type="submit" class="btn-primary">💾 שמור בדיקה</button>
                         <button type="reset" class="btn-secondary">🔄 נקה</button>
@@ -564,6 +586,8 @@
                 turbidity: parseFloat(document.getElementById('turbidity').value),
                 chlorine: parseFloat(document.getElementById('chlorine').value),
                 pH: parseFloat(document.getElementById('pH').value),
+                testTime: document.getElementById('testTime').value,
+                description: document.getElementById('description').value,
                 timestamp: Date.now(),
                 date: new Date().toISOString().split('T')[0]
             };
@@ -596,9 +620,10 @@
                                     <button class="btn-small btn-delete" onclick="deleteRecord(${test.id})">מחק</button>
                                 </div>
                                 <div class="record-info">
-                                    <strong>${test.locality} - ${test.meter}</strong>
+                                    <strong>${test.locality} - ${test.meter} (${test.testTime})</strong>
                                     <small>${formatDate(test.timestamp)}</small><br>
-                                    <small>עכירות: ${test.turbidity.toFixed(2)} | כלור: ${test.chlorine.toFixed(2)} | pH: ${test.pH.toFixed(2)}</small><br>
+                                    <small>עכירות: ${test.turbidity.toFixed(2)} | כלור: ${test.chlorine.toFixed(2)} | pH: ${test.pH.toFixed(2)}</small>
+                                    ${test.description ? `<small>📝 ${test.description.substring(0, 50)}${test.description.length > 50 ? '...' : ''}</small><br>` : ''}
                                     <span class="status-badge status-${quality.status}">${quality.badge}</span>
                                 </div>
                             </div>
@@ -690,6 +715,7 @@
                 const details = [
                     `ישוב: ${test.locality}`,
                     `מד מים / עמדה: ${test.meter}`,
+                    `שעת הבדיקה: ${test.testTime}`,
                     `עכירות (NTU): ${test.turbidity.toFixed(2)}`,
                     `כלור נותר (mg/L): ${test.chlorine.toFixed(2)}`,
                     `pH: ${test.pH.toFixed(2)}`,
@@ -701,6 +727,24 @@
                     doc.text(detail, 10, yPos, { align: 'right' });
                     yPos += 8;
                 });
+
+                // תיאור האירוע
+                if (test.description) {
+                    yPos += 5;
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(10);
+                    doc.text('תיאור האירוע:', 10, yPos, { align: 'right' });
+                    yPos += 8;
+                    
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(9);
+                    const lines = doc.splitTextToSize(test.description, 185);
+                    lines.forEach(line => {
+                        doc.text(line, 10, yPos, { align: 'right' });
+                        yPos += 6;
+                    });
+                    yPos += 2;
+                }
 
                 // הערות איכות
                 if (quality.issues.length > 0) {
@@ -766,6 +810,7 @@
                     const quality = getQualityStatus(test.turbidity, test.chlorine, test.pH);
                     return [
                         new Date(test.timestamp).toLocaleDateString('he-IL'),
+                        test.testTime || '-',
                         test.locality,
                         test.meter,
                         test.turbidity.toFixed(2),
@@ -777,9 +822,9 @@
 
                 // ציור טבלה ידני (כי jsPDF-AutoTable עלול להיות בעיה)
                 let yPos = 50;
-                const colWidth = 25;
+                const colWidth = 22;
                 const rowHeight = 8;
-                const headers = ['תאריך', 'ישוב', 'מד מים', 'עכירות', 'כלור', 'pH', 'מצב'];
+                const headers = ['תאריך', 'שעה', 'ישוב', 'מד מים', 'עכירות', 'כלור', 'pH', 'מצב'];
 
                 // Headers
                 doc.setFont('helvetica', 'bold');
@@ -795,7 +840,7 @@
                 yPos += rowHeight;
                 doc.setTextColor(0, 0, 0);
                 doc.setFont('helvetica', 'normal');
-                doc.setFontSize(9);
+                doc.setFontSize(8);
 
                 // Rows
                 tableData.forEach((row, rowIndex) => {
