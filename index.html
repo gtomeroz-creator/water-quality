@@ -110,6 +110,74 @@
             background: #f9f9f9;
         }
 
+        .image-input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .img-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            border: 2px solid var(--primary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .img-btn-camera {
+            background: var(--primary);
+            color: white;
+        }
+
+        .img-btn-camera:hover {
+            background: #005fa3;
+        }
+
+        .img-btn-gallery {
+            background: white;
+            color: var(--primary);
+        }
+
+        .img-btn-gallery:hover {
+            background: #e3f2fd;
+        }
+
+        .img-btn.selected {
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
+        }
+
+        .img-preview {
+            margin-top: 10px;
+            display: none;
+            text-align: center;
+        }
+
+        .img-preview.show {
+            display: block;
+        }
+
+        .img-preview img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 6px;
+            border: 2px solid var(--success);
+        }
+
+        .img-preview .img-label {
+            font-size: 12px;
+            color: var(--success);
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
         input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--primary);
@@ -335,8 +403,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="turbidityImage">📷 תמונת בדיקת עכירות *</label>
-                    <input type="file" id="turbidityImage" accept="image/*" capture="environment" required>
+                    <label>📷 תמונת בדיקת עכירות *</label>
+                    <div class="image-input-group">
+                        <label class="img-btn img-btn-camera">
+                            📸 צלם
+                            <input type="file" id="turbidityCamera" accept="image/*" capture="environment" style="display:none;">
+                        </label>
+                        <label class="img-btn img-btn-gallery">
+                            🖼️ גלריה
+                            <input type="file" id="turbidityGallery" accept="image/*" style="display:none;">
+                        </label>
+                    </div>
+                    <div id="turbidityPreview" class="img-preview"></div>
                 </div>
 
                 <div class="form-group">
@@ -345,8 +423,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="chlorineImage">📷 תמונת בדיקת כלור *</label>
-                    <input type="file" id="chlorineImage" accept="image/*" capture="environment" required>
+                    <label>📷 תמונת בדיקת כלור *</label>
+                    <div class="image-input-group">
+                        <label class="img-btn img-btn-camera">
+                            📸 צלם
+                            <input type="file" id="chlorineCamera" accept="image/*" capture="environment" style="display:none;">
+                        </label>
+                        <label class="img-btn img-btn-gallery">
+                            🖼️ גלריה
+                            <input type="file" id="chlorineGallery" accept="image/*" style="display:none;">
+                        </label>
+                    </div>
+                    <div id="chlorinePreview" class="img-preview"></div>
                 </div>
 
                 <div class="form-group">
@@ -360,7 +448,7 @@
                 </div>
 
                 <div class="button-group">
-                    <button type="submit" class="btn-primary">💾 שמור בדיקה</button>
+                    <button type="submit" class="btn-primary">📄 צור קובץ Word</button>
                     <button type="reset" class="btn-secondary">🔄 נקה</button>
                 </div>
             </form>
@@ -402,6 +490,54 @@
             URL.revokeObjectURL(url);
         }
 
+        // ==================== Image Handling ====================
+        // שמירת הקובץ הנבחר לכל שדה תמונה
+        const selectedImages = {
+            turbidity: null,
+            chlorine: null
+        };
+
+        // טיפול בבחירת תמונה (מצלמה או גלריה)
+        function setupImageInput(fieldName) {
+            const cameraInput = document.getElementById(`${fieldName}Camera`);
+            const galleryInput = document.getElementById(`${fieldName}Gallery`);
+            const preview = document.getElementById(`${fieldName}Preview`);
+            const cameraBtn = cameraInput.parentElement;
+            const galleryBtn = galleryInput.parentElement;
+
+            function handleFile(file, source) {
+                if (!file) return;
+                
+                selectedImages[fieldName] = file;
+                
+                // הצג preview
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.innerHTML = `
+                        <img src="${e.target.result}" alt="תצוגה מקדימה">
+                        <div class="img-label">✅ תמונה נבחרה (${source})</div>
+                    `;
+                    preview.classList.add('show');
+                };
+                reader.readAsDataURL(file);
+
+                // סמן את הכפתור הפעיל
+                cameraBtn.classList.remove('selected');
+                galleryBtn.classList.remove('selected');
+                if (source === 'מצלמה') {
+                    cameraBtn.classList.add('selected');
+                } else {
+                    galleryBtn.classList.add('selected');
+                }
+            }
+
+            cameraInput.addEventListener('change', (e) => handleFile(e.target.files[0], 'מצלמה'));
+            galleryInput.addEventListener('change', (e) => handleFile(e.target.files[0], 'גלריה'));
+        }
+
+        setupImageInput('turbidity');
+        setupImageInput('chlorine');
+
         // ==================== Validation בזמן אמת ====================
         function validateForm() {
             const turbidity = parseFloat(document.getElementById('turbidity').value) || 0;
@@ -436,15 +572,12 @@
         document.getElementById('testForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const turbidityFile = document.getElementById('turbidityImage').files[0];
-            const chlorineFile = document.getElementById('chlorineImage').files[0];
-
-            if (!turbidityFile) {
-                showAlert('❌ חובה לצרף תמונת עכירות', 'error');
+            if (!selectedImages.turbidity) {
+                showAlert('❌ חובה לצרף תמונת עכירות (צלם או בחר מגלריה)', 'error');
                 return;
             }
-            if (!chlorineFile) {
-                showAlert('❌ חובה לצרף תמונת כלור', 'error');
+            if (!selectedImages.chlorine) {
+                showAlert('❌ חובה לצרף תמונת כלור (צלם או בחר מגלריה)', 'error');
                 return;
             }
 
@@ -461,8 +594,8 @@
                     chlorine: parseFloat(document.getElementById('chlorine').value),
                     pH: document.getElementById('pH').value ? parseFloat(document.getElementById('pH').value) : null,
                     description: document.getElementById('description').value,
-                    turbidityImage: await fileToBase64(turbidityFile),
-                    chlorineImage: await fileToBase64(chlorineFile),
+                    turbidityImage: await fileToBase64(selectedImages.turbidity),
+                    chlorineImage: await fileToBase64(selectedImages.chlorine),
                     timestamp: Date.now()
                 };
 
@@ -471,8 +604,13 @@
                 document.getElementById('testForm').reset();
                 document.getElementById('testDate').value = new Date().toISOString().split('T')[0];
                 document.getElementById('warnings').classList.remove('show');
+                document.getElementById('turbidityPreview').classList.remove('show');
+                document.getElementById('chlorinePreview').classList.remove('show');
+                selectedImages.turbidity = null;
+                selectedImages.chlorine = null;
+                document.querySelectorAll('.img-btn').forEach(b => b.classList.remove('selected'));
                 
-                showAlert('✅ JSON הורד בהצלחה!\n\nהרץ:\npython3 water_report_generator.py בדיקה.json דוח.docx', 'success');
+                showAlert('✅ JSON הורד בהצלחה!\n\nהרץ את הפקודה:\npython3 water_report_generator.py בדיקה.json דוח.docx', 'success');
             } catch (error) {
                 showAlert('❌ שגיאה: ' + error.message, 'error');
             }
