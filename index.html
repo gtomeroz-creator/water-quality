@@ -398,13 +398,23 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="turbidityImage">📷 תמונת בדיקת עכירות *</label>
+                        <input type="file" id="turbidityImage" accept="image/*" required>
+                    </div>
+
+                    <div class="form-group">
                         <label for="chlorine">כלור נותר (mg/L) *</label>
                         <input type="number" id="chlorine" step="0.01" placeholder="0.00" required>
                     </div>
 
                     <div class="form-group">
-                        <label for="pH">pH *</label>
-                        <input type="number" id="pH" step="0.01" placeholder="7.0" min="0" max="14" required>
+                        <label for="chlorineImage">📷 תמונת בדיקת כלור *</label>
+                        <input type="file" id="chlorineImage" accept="image/*" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pH">pH</label>
+                        <input type="number" id="pH" step="0.01" placeholder="7.0" min="0" max="14">
                     </div>
 
                     <div class="form-group">
@@ -426,45 +436,205 @@
 
             <!-- תיקיית בדיקות -->
             <div class="card">
-                <h2>📊 סטטיסטיקה</h2>
+                <h2>ℹ️ הוראות שימוש</h2>
                 
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-value" id="totalTests">0</div>
-                        <div class="stat-label">סה"כ בדיקות</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value" id="todayTests">0</div>
-                        <div class="stat-label">היום</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value" id="localities">0</div>
-                        <div class="stat-label">ישובים</div>
-                    </div>
-                </div>
-
-                <div style="margin-top: 20px;">
-                    <button class="btn-primary" onclick="exportAllPDF()" style="width: 100%; margin-bottom: 10px;">📄 דוח PDF כללי</button>
-                    <button class="btn-primary" onclick="exportSelectedToWord()" style="width: 100%; margin-bottom: 10px; background: #06a77d;">📋 Export to Word</button>
-                    <button class="btn-secondary" onclick="clearAllData()" style="width: 100%;">🗑️ מחק הכל</button>
+                <div style="text-align: right; padding: 15px; background: #e3f2fd; border-radius: 6px; border-right: 4px solid #0077be;">
+                    <p><strong>🔄 זרימת עבודה:</strong></p>
+                    <ol style="text-align: right; margin: 10px 0;">
+                        <li>מלא את כל השדות</li>
+                        <li>צרף תמונה של עכירות</li>
+                        <li>צרף תמונה של כלור</li>
+                        <li>לחץ "💾 שמור בדיקה"</li>
+                        <li>JSON יורד בעצמו</li>
+                        <li>הרץ Python script:</li>
+                    </ol>
+                    <code style="display: block; margin-top: 10px; padding: 10px; background: white; border-radius: 4px; direction: ltr;">
+                        python3 water_report_generator.py בדיקה.json דוח.docx
+                    </code>
+                    <p style="margin-top: 10px; font-size: 12px; color: #666;">
+                        ✅ תמונות יתחברו אוטומטי לדוח Word
+                    </p>
                 </div>
             </div>
         </div>
 
-        <!-- רשימת בדיקות -->
-        <div class="card">
-            <h2>📋 בדיקות אחרונות</h2>
-            <div id="recordsList" class="records-list"></div>
+        <!-- רק טופס, אין רשימה -->
         </div>
     </div>
 
     <div id="offlineBadge" class="offline-badge">📡 עובד במצב אופליין</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <script>
+        // ==================== Utilities ====================
+        function showAlert(message, type = 'success') {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert show alert-${type}`;
+            setTimeout(() => alert.classList.remove('show'), 4000);
+        }
+
+        // ==================== File to Base64 ====================
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ==================== Export JSON ====================
+        function exportTestJSON(testData) {
+            const json = JSON.stringify(testData, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `בדיקה_${testData.locality}_${testData.date}_${testData.testTime.replace(':', '-')}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+        }
+
+        // ==================== Form Submission ====================
+        document.getElementById('testForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // בדוק תמונות
+            const turbidityFile = document.getElementById('turbidityImage').files[0];
+            const chlorineFile = document.getElementById('chlorineImage').files[0];
+
+            if (!turbidityFile) {
+                showAlert('❌ צריך להוסיף תמונת עכירות', 'error');
+                return;
+            }
+            if (!chlorineFile) {
+                showAlert('❌ צריך להוסיף תמונת כלור', 'error');
+                return;
+            }
+
+            try {
+                // צור object עם תמונות
+                const testData = {
+                    locality: document.getElementById('locality').value,
+                    meter: document.getElementById('meter').value,
+                    turbidity: parseFloat(document.getElementById('turbidity').value),
+                    chlorine: parseFloat(document.getElementById('chlorine').value),
+                    pH: document.getElementById('pH').value ? parseFloat(document.getElementById('pH').value) : null,
+                    testTime: document.getElementById('testTime').value,
+                    description: document.getElementById('description').value,
+                    turbidityImage: await fileToBase64(turbidityFile),
+                    chlorineImage: await fileToBase64(chlorineFile),
+                    timestamp: Date.now(),
+                    date: new Date().toISOString().split('T')[0]
+                };
+
+                // יצא JSON
+                exportTestJSON(testData);
+                
+                // נקה
+                document.getElementById('testForm').reset();
+                showAlert('✅ JSON הורד בהצלחה!\n\nהרץ: python3 water_report_generator.py בדיקה.json דוח.docx', 'success');
+            } catch (error) {
+                showAlert('❌ שגיאה: ' + error.message, 'error');
+            }
+        });
+
+        // ==================== Validation in Real-Time ====================
+        function validateForm() {
+            const turbidity = parseFloat(document.getElementById('turbidity').value) || 0;
+            const chlorine = parseFloat(document.getElementById('chlorine').value) || 0;
+            
+            let warnings = [];
+            
+            if (turbidity >= 1) {
+                warnings.push('⚠️ עכירות גבוהה מ-1 NTU');
+            }
+            
+            if (chlorine < 0.1 || chlorine > 0.5) {
+                warnings.push('⚠️ כלור חייב להיות בין 0.1 ל-0.5 mg/L');
+            }
+            
+            // הצג הודעות
+            const warningsDiv = document.getElementById('formWarnings') || 
+                (() => {
+                    const div = document.createElement('div');
+                    div.id = 'formWarnings';
+                    div.style.cssText = 'margin-top: 10px; padding: 10px; border-radius: 6px; background: #fff3cd; border-right: 4px solid #ff9800;';
+                    document.getElementById('testForm').parentElement.insertBefore(div, document.getElementById('testForm'));
+                    return div;
+                })();
+            
+            if (warnings.length > 0) {
+                warningsDiv.innerHTML = warnings.map(w => `<div style="color: #ff6b00; font-weight: bold;">${w}</div>`).join('');
+                warningsDiv.style.display = 'block';
+            } else {
+                warningsDiv.style.display = 'none';
+            }
+        }
+
+        // הוסף listeners
+        document.getElementById('turbidity')?.addEventListener('input', validateForm);
+        document.getElementById('chlorine')?.addEventListener('input', validateForm);
+
+        // ==================== Service Worker ====================
+        function registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW registered'))
+                    .catch(err => console.log('SW registration failed'));
+            }
+        }
+
+        // ==================== Offline Detection ====================
+        window.addEventListener('online', () => {
+            document.getElementById('offlineBadge').classList.remove('show');
+        });
+
+        window.addEventListener('offline', () => {
+            document.getElementById('offlineBadge').classList.add('show');
+        });
+
+        // ==================== PWA Install Banner ====================
+        let deferredPrompt;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installBanner').classList.add('show');
+            document.getElementById('installBanner').innerHTML = `
+                <span>💾 הוסף יישום לעמודת ההשראה שלך</span>
+                <button class="btn-primary" onclick="installApp()">הוסף</button>
+            `;
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredPrompt = null;
+            document.getElementById('installBanner').classList.remove('show');
+        });
+
+        function installApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(choiceResult => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+
+        // ==================== Init ====================
+        function init() {
+            registerServiceWorker();
+        }
+
+        init();
+    </script>
         // ==================== IndexedDB Setup ====================
         let db;
 
@@ -581,27 +751,64 @@
         document.getElementById('testForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            // בדוק תמונות
+            const turbidityFile = document.getElementById('turbidityImage').files[0];
+            const chlorineFile = document.getElementById('chlorineImage').files[0];
+
+            if (!turbidityFile) {
+                showAlert('❌ צריך להוסיף תמונת עכירות', 'error');
+                return;
+            }
+            if (!chlorineFile) {
+                showAlert('❌ צריך להוסיף תמונת כלור', 'error');
+                return;
+            }
+
+            // צור object
             const testData = {
                 locality: document.getElementById('locality').value,
                 meter: document.getElementById('meter').value,
                 turbidity: parseFloat(document.getElementById('turbidity').value),
                 chlorine: parseFloat(document.getElementById('chlorine').value),
-                pH: parseFloat(document.getElementById('pH').value),
+                pH: document.getElementById('pH').value ? parseFloat(document.getElementById('pH').value) : null,
                 testTime: document.getElementById('testTime').value,
                 description: document.getElementById('description').value,
+                turbidityImage: await fileToBase64(turbidityFile),
+                chlorineImage: await fileToBase64(chlorineFile),
                 timestamp: Date.now(),
                 date: new Date().toISOString().split('T')[0]
             };
 
-            try {
-                await saveTest(testData);
-                showAlert('✅ בדיקה נשמרה בהצלחה!');
-                document.getElementById('testForm').reset();
-                await loadRecords();
-            } catch (error) {
-                showAlert('❌ שגיאה בשמירה: ' + error.message, 'error');
-            }
+            // יצא JSON מיד
+            exportTestJSON(testData);
+            
+            // נקה את הטופס
+            document.getElementById('testForm').reset();
+            showAlert('✅ בדיקה הופכה לJSON!\nהרץ: python3 water_report_generator.py [json_file]', 'success');
         });
+
+        // פונקציית עזר - קרא תמונה כ-Base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function exportTestJSON(testData) {
+            const json = JSON.stringify(testData, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `בדיקה_${testData.locality}_${testData.date}_${testData.testTime.replace(':', '-')}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+        }
 
         // ==================== Display Records ====================
         async function loadRecords() {
@@ -614,10 +821,18 @@
                 } else {
                     list.innerHTML = tests.map(test => {
                         const quality = getQualityStatus(test.turbidity, test.chlorine, test.pH);
+                        
+                        // בדוק ערכים חריגים
+                        let warnings = [];
+                        if (test.turbidity >= 1) warnings.push('⚠️ עכירות גבוהה');
+                        if (test.chlorine < 0.1 || test.chlorine > 0.5) warnings.push('⚠️ כלור חריג');
+                        
+                        const warningText = warnings.length > 0 ? `<small style="color: #d62828; font-weight: bold;">${warnings.join(' | ')}</small><br>` : '';
+                        
                         return `
                             <div class="record-item">
                                 <div class="record-actions">
-                                    <button class="btn-small btn-view" onclick="generateTestPDF(${test.id})">PDF</button>
+                                    <button class="btn-small btn-view" onclick="generateTestWord(${test.id})">Word</button>
                                     <button class="btn-small btn-delete" onclick="deleteRecord(${test.id})">מחק</button>
                                 </div>
                                 <div class="record-info">
@@ -625,6 +840,7 @@
                                     <small>${formatDate(test.timestamp)}</small><br>
                                     <small>עכירות: ${test.turbidity.toFixed(2)} | כלור: ${test.chlorine.toFixed(2)} | pH: ${test.pH.toFixed(2)}</small>
                                     ${test.description ? `<small>📝 ${test.description.substring(0, 50)}${test.description.length > 50 ? '...' : ''}</small><br>` : ''}
+                                    ${warningText}
                                     <span class="status-badge status-${quality.status}">${quality.badge}</span>
                                 </div>
                             </div>
@@ -672,58 +888,72 @@
             }
         }
 
-        async function exportSelectedToWord() {
+        // ==================== Word Export ====================
+        async function generateTestWord(testId) {
             try {
                 const tests = await getTests();
+                const test = tests.find(t => t.id === testId);
                 
-                if (tests.length === 0) {
-                    showAlert('❌ אין בדיקות לייצוא', 'error');
+                if (!test) {
+                    showAlert('❌ בדיקה לא נמצאה', 'error');
                     return;
                 }
 
-                // אם יש רק בדיקה אחת, יצא אותה
-                if (tests.length === 1) {
-                    exportTestAsJSON(tests[0]);
-                    return;
-                }
-
-                // אחרת, שאל המשתמש איזה בדיקה
-                const testIndex = prompt(`בחר בדיקה (1-${tests.length}):\n\n` + 
-                    tests.map((t, i) => `${i+1}. ${t.locality} - ${t.meter} (${new Date(t.timestamp).toLocaleString('he-IL')})`).join('\n'));
+                // צור JSON
+                const json = JSON.stringify(test, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
                 
-                if (testIndex && !isNaN(testIndex)) {
-                    const idx = parseInt(testIndex) - 1;
-                    if (idx >= 0 && idx < tests.length) {
-                        exportTestAsJSON(tests[idx]);
-                    }
-                }
+                // יצור link להורדה
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `בדיקה_${test.locality}_${test.date}_${test.testTime.replace(':', '-')}.json`;
+                link.click();
+                
+                URL.revokeObjectURL(url);
+                
+                showAlert('✅ JSON הורד!\nהרץ: python3 water_report_generator.py [json_file]', 'success');
             } catch (error) {
                 showAlert('❌ שגיאה: ' + error.message, 'error');
             }
         }
 
-        function exportTestAsJSON(test) {
-            // צור JSON
-            const json = JSON.stringify(test, null, 2);
+        // Validation בזמן אמת
+        function validateForm() {
+            const turbidity = parseFloat(document.getElementById('turbidity').value) || 0;
+            const chlorine = parseFloat(document.getElementById('chlorine').value) || 0;
             
-            // צור blob
-            const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
+            let warnings = [];
             
-            // יצור link להורדה
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `בדיקה_${test.locality}_${test.date}_${test.testTime.replace(':', '-')}.json`;
-            link.click();
+            if (turbidity >= 1) {
+                warnings.push('⚠️ עכירות גבוהה מ-1 NTU');
+            }
             
-            // נקה
-            URL.revokeObjectURL(url);
+            if (chlorine < 0.1 || chlorine > 0.5) {
+                warnings.push('⚠️ כלור חייב להיות בין 0.1 ל-0.5 mg/L');
+            }
             
-            showAlert('✅ JSON הורד! עכשיו:\n1. התקן python-docx: pip install python-docx\n2. הרץ: python3 water_report_generator.py [json_file] [output_docx]', 'success');
+            // הצג הודעות
+            const warningsDiv = document.getElementById('formWarnings');
+            if (!warningsDiv) {
+                const div = document.createElement('div');
+                div.id = 'formWarnings';
+                div.style.cssText = 'margin-top: 10px; padding: 10px; border-radius: 6px; background: #fff3cd; border-right: 4px solid #ff9800;';
+                document.getElementById('testForm').parentElement.insertBefore(div, document.getElementById('testForm'));
+            }
+            
+            const warningsDiv2 = document.getElementById('formWarnings');
+            if (warnings.length > 0) {
+                warningsDiv2.innerHTML = warnings.map(w => `<div style="color: #ff6b00; font-weight: bold;">${w}</div>`).join('');
+                warningsDiv2.style.display = 'block';
+            } else {
+                warningsDiv2.style.display = 'none';
+            }
         }
 
-        // ==================== PDF Generation ====================
-        async function generateTestPDF(testId) {
+        // הוסף validation listeners
+        document.getElementById('turbidity').addEventListener('input', validateForm);
+        document.getElementById('chlorine').addEventListener('input', validateForm);
             try {
                 const tests = await getTests();
                 const test = tests.find(t => t.id === testId);
@@ -829,7 +1059,21 @@
             }
         }
 
-        async function exportAllPDF() {
+        async function showWordExportInfo() {
+            showAlert(`📋 Word Export Instructions:
+
+1. לחץ על כפתור "Word" ליד כל בדיקה
+2. JSON יורד בעצמי
+3. הרץ: python3 water_report_generator.py [json_file]
+4. דוח Word יוצור בעצמי
+
+📥 Download python script:
+water_report_generator.py
+
+ערכים חריגים יוצגו אוטומטי בדוח:
+🚨 כלור: צריך 0.1-0.5
+🚨 עכירות: צריך < 1`, 'success');
+        }
             try {
                 const tests = await getTests();
                 
@@ -965,9 +1209,7 @@
         }
 
         // ==================== Init ====================
-        async function init() {
-            await initDB();
-            await loadRecords();
+        function init() {
             registerServiceWorker();
         }
 
