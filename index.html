@@ -619,8 +619,36 @@
         // ==================== Service Worker ====================
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SW registered'))
+                .then(reg => {
+                    console.log('SW registered');
+                    
+                    // בדוק עדכונים כל 30 שניות
+                    setInterval(() => reg.update(), 30000);
+                    
+                    // אם יש SW חדש מחכה - הפעל אותו
+                    reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                // יש גרסה חדשה - הצג הודעה
+                                if (confirm('🔄 גרסה חדשה זמינה! האם לטעון מחדש?')) {
+                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                    window.location.reload();
+                                }
+                            }
+                        });
+                    });
+                })
                 .catch(err => console.log('SW failed'));
+
+            // האזן לעדכון SW
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    refreshing = true;
+                    window.location.reload();
+                }
+            });
         }
 
         // ==================== Offline Detection ====================
