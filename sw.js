@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `water-quality-${CACHE_VERSION}`;
 const urlsToCache = [
     './',
@@ -6,21 +6,14 @@ const urlsToCache = [
     './manifest.json'
 ];
 
-// Install event - install new version
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => {
-                return cache.addAll(urlsToCache)
-                    .catch(err => {
-                        console.warn('Some resources failed to cache:', err);
-                    });
-            })
+            .then(cache => cache.addAll(urlsToCache).catch(err => console.warn('Cache error:', err)))
             .then(() => self.skipWaiting())
     );
 });
 
-// Activate event - delete old caches
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(cacheNames => {
@@ -36,9 +29,11 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Fetch event - Network First strategy
 self.addEventListener('fetch', event => {
-    if (event.request.method !== 'GET') {
+    if (event.request.method !== 'GET') return;
+
+    // אל תנסה לטפל בבקשות CDN (cdnjs)
+    if (event.request.url.includes('cdnjs.cloudflare.com')) {
         return;
     }
 
@@ -47,24 +42,15 @@ self.addEventListener('fetch', event => {
             .then(response => {
                 if (response && response.status === 200 && response.type !== 'error') {
                     const responseToCache = response.clone();
-                    caches.open(CACHE_NAME)
-                        .then(cache => {
-                            cache.put(event.request, responseToCache);
-                        });
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
                 }
                 return response;
             })
             .catch(() => {
-                return caches.match(event.request)
-                    .then(cachedResponse => {
-                        if (cachedResponse) {
-                            return cachedResponse;
-                        }
-                        return new Response('Offline', {
-                            status: 503,
-                            statusText: 'Service Unavailable'
-                        });
-                    });
+                return caches.match(event.request).then(cachedResponse => {
+                    if (cachedResponse) return cachedResponse;
+                    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+                });
             })
     );
 });
