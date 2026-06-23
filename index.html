@@ -8,6 +8,11 @@
     <title>בדיקות איכות מים</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230077be' width='192' height='192'/><text x='50%' y='50%' font-size='120' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='middle'>💧</text></svg>">
+    
+    <!-- ספריות חיצוניות ליצירת Word -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -97,7 +102,36 @@
             font-family: inherit;
             text-align: right;
             direction: rtl;
-            transition: border-color 0.3s;
+            transition: all 0.3s;
+        }
+
+        input.field-warning {
+            border-color: var(--danger);
+            background: #fff5f5;
+            box-shadow: 0 0 0 3px rgba(214, 40, 40, 0.1);
+        }
+
+        .field-alert {
+            display: none;
+            margin-top: 6px;
+            padding: 8px 12px;
+            background: #fff3cd;
+            border-right: 4px solid var(--danger);
+            border-radius: 4px;
+            color: var(--danger);
+            font-size: 13px;
+            font-weight: bold;
+            text-align: right;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .field-alert.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         textarea {
@@ -211,6 +245,11 @@
             background: #005fa3;
         }
 
+        .btn-primary:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+
         .btn-secondary {
             background: var(--light);
             color: var(--primary);
@@ -278,17 +317,6 @@
             padding-right: 20px;
         }
 
-        .info-box code {
-            display: block;
-            margin-top: 10px;
-            padding: 10px;
-            background: white;
-            border-radius: 4px;
-            direction: ltr;
-            font-size: 12px;
-            word-break: break-all;
-        }
-
         .offline-badge {
             position: fixed;
             bottom: 20px;
@@ -306,33 +334,25 @@
             display: block;
         }
 
-        .install-banner {
-            background: var(--primary);
-            color: white;
-            padding: 15px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            display: none;
-            text-align: right;
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            vertical-align: middle;
+            margin-left: 8px;
         }
 
-        .install-banner.show {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .install-banner button {
-            background: white;
-            color: var(--primary);
-            padding: 8px 16px;
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="installBanner" class="install-banner"></div>
-
         <header>
             <h1>💧 בדיקות איכות מים</h1>
             <p>הרי נצרת מפעלי מים וביוב בע"מ</p>
@@ -349,16 +369,11 @@
                     <li>מלא את כל השדות החובה (*)</li>
                     <li>צרף תמונה של בדיקת עכירות</li>
                     <li>צרף תמונה של בדיקת כלור</li>
-                    <li>לחץ "💾 שמור בדיקה"</li>
-                    <li>JSON יורד אוטומטי</li>
-                    <li>הרץ Python script להפקת דוח Word</li>
+                    <li>לחץ "📄 צור קובץ Word"</li>
+                    <li>קובץ Word יורד אוטומטית עם התמונות!</li>
                 </ol>
-                <code>python3 water_report_generator.py בדיקה.json דוח.docx</code>
             </div>
         </div>
-
-        <!-- אזהרות בזמן אמת -->
-        <div id="warnings" class="warnings"></div>
 
         <!-- טופס -->
         <div class="card">
@@ -400,6 +415,7 @@
                 <div class="form-group">
                     <label for="turbidity">עכירות (NTU) *</label>
                     <input type="number" id="turbidity" step="0.01" placeholder="0.00" required>
+                    <div id="turbidity-alert" class="field-alert"></div>
                 </div>
 
                 <div class="form-group">
@@ -420,6 +436,7 @@
                 <div class="form-group">
                     <label for="chlorine">כלור נותר (mg/L) *</label>
                     <input type="number" id="chlorine" step="0.01" placeholder="0.00" required>
+                    <div id="chlorine-alert" class="field-alert"></div>
                 </div>
 
                 <div class="form-group">
@@ -440,6 +457,7 @@
                 <div class="form-group">
                     <label for="pH">pH</label>
                     <input type="number" id="pH" step="0.01" placeholder="7.0" min="0" max="14">
+                    <div id="pH-alert" class="field-alert"></div>
                 </div>
 
                 <div class="form-group">
@@ -448,7 +466,7 @@
                 </div>
 
                 <div class="button-group">
-                    <button type="submit" class="btn-primary">📄 צור קובץ Word</button>
+                    <button type="submit" class="btn-primary" id="submitBtn">📄 צור קובץ Word</button>
                     <button type="reset" class="btn-secondary">🔄 נקה</button>
                 </div>
             </form>
@@ -466,38 +484,39 @@
             setTimeout(() => alert.classList.remove('show'), 6000);
         }
 
-        // המר תמונה ל-Base64
-        function fileToBase64(file) {
+        // המר תמונה ל-ArrayBuffer (עבור docx.js)
+        function fileToArrayBuffer(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result);
                 reader.onerror = reject;
-                reader.readAsDataURL(file);
+                reader.readAsArrayBuffer(file);
             });
         }
 
-        // הורד JSON
-        function downloadJSON(testData) {
-            const json = JSON.stringify(testData, null, 2);
-            const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `בדיקה_${testData.locality}_${testData.date}_${testData.testTime.replace(':', '-')}.json`;
-            link.click();
-            
-            URL.revokeObjectURL(url);
+        // קבל מימדים של תמונה
+        function getImageDimensions(file) {
+            return new Promise((resolve) => {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    resolve({ width: img.naturalWidth, height: img.naturalHeight });
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    resolve({ width: 400, height: 300 });
+                };
+                img.src = url;
+            });
         }
 
         // ==================== Image Handling ====================
-        // שמירת הקובץ הנבחר לכל שדה תמונה
         const selectedImages = {
             turbidity: null,
             chlorine: null
         };
 
-        // טיפול בבחירת תמונה (מצלמה או גלריה)
         function setupImageInput(fieldName) {
             const cameraInput = document.getElementById(`${fieldName}Camera`);
             const galleryInput = document.getElementById(`${fieldName}Gallery`);
@@ -510,7 +529,6 @@
                 
                 selectedImages[fieldName] = file;
                 
-                // הצג preview
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     preview.innerHTML = `
@@ -521,7 +539,6 @@
                 };
                 reader.readAsDataURL(file);
 
-                // סמן את הכפתור הפעיל
                 cameraBtn.classList.remove('selected');
                 galleryBtn.classList.remove('selected');
                 if (source === 'מצלמה') {
@@ -539,38 +556,372 @@
         setupImageInput('chlorine');
 
         // ==================== Validation בזמן אמת ====================
-        function validateForm() {
-            const turbidity = parseFloat(document.getElementById('turbidity').value) || 0;
-            const chlorine = parseFloat(document.getElementById('chlorine').value) || 0;
+        function checkField(fieldId, value, min, max, fieldName, unit) {
+            const input = document.getElementById(fieldId);
+            const alertDiv = document.getElementById(fieldId + '-alert');
             
-            const warnings = [];
-            
-            if (turbidity >= 1) {
-                warnings.push('⚠️ שים לב ערך חריג - עכירות גבוהה מ-1 NTU');
+            if (value === '' || isNaN(value)) {
+                input.classList.remove('field-warning');
+                alertDiv.classList.remove('show');
+                return true;
             }
             
-            if (chlorine > 0 && (chlorine < 0.1 || chlorine > 0.5)) {
-                warnings.push('⚠️ שים לב ערך חריג - כלור חייב להיות בין 0.1 ל-0.5 mg/L');
+            const num = parseFloat(value);
+            let isOK = true;
+            let message = '';
+            
+            if (min !== null && num < min) {
+                isOK = false;
+                message = `⚠️ ערך נמוך מהמותר - ${fieldName} חייב להיות לפחות ${min} ${unit}`;
+            } else if (max !== null && num > max) {
+                isOK = false;
+                message = `⚠️ ערך גבוה מהמותר - ${fieldName} חייב להיות עד ${max} ${unit}`;
             }
             
-            const warningsDiv = document.getElementById('warnings');
-            if (warnings.length > 0) {
-                warningsDiv.innerHTML = warnings.map(w => `<div class="warning-item">${w}</div>`).join('');
-                warningsDiv.classList.add('show');
+            if (!isOK) {
+                input.classList.add('field-warning');
+                alertDiv.textContent = message;
+                alertDiv.classList.add('show');
             } else {
-                warningsDiv.classList.remove('show');
+                input.classList.remove('field-warning');
+                alertDiv.classList.remove('show');
             }
+            
+            return isOK;
+        }
+
+        function validateForm() {
+            const turbidityVal = document.getElementById('turbidity').value;
+            const chlorineVal = document.getElementById('chlorine').value;
+            const phVal = document.getElementById('pH').value;
+            
+            // עכירות: חייב להיות פחות מ-1 NTU
+            checkField('turbidity', turbidityVal, null, 0.99, 'עכירות', 'NTU');
+            
+            // כלור: 0.1-0.5 mg/L
+            checkField('chlorine', chlorineVal, 0.1, 0.5, 'כלור נותר', 'mg/L');
+            
+            // pH: 6.5-8.5
+            checkField('pH', phVal, 6.5, 8.5, 'pH', '');
         }
 
         document.getElementById('turbidity').addEventListener('input', validateForm);
         document.getElementById('chlorine').addEventListener('input', validateForm);
+        document.getElementById('pH').addEventListener('input', validateForm);
 
-        // ==================== הגדר תאריך היום ====================
         document.getElementById('testDate').value = new Date().toISOString().split('T')[0];
+
+        // ==================== Word Generation ====================
+        async function generateWordDocument(data) {
+            // נטען את כל הספריות הנדרשות
+            const {
+                Document, Packer, Paragraph, TextRun, ImageRun,
+                AlignmentType, HeadingLevel, BorderStyle, Table, TableRow, TableCell,
+                WidthType, ShadingType
+            } = docx;
+
+            // המר תמונות ל-ArrayBuffer
+            const turbidityImg = await fileToArrayBuffer(selectedImages.turbidity);
+            const turbidityDim = await getImageDimensions(selectedImages.turbidity);
+            const chlorineImg = await fileToArrayBuffer(selectedImages.chlorine);
+            const chlorineDim = await getImageDimensions(selectedImages.chlorine);
+
+            // הגדרות
+            const turbidityOK = data.turbidity < 1;
+            const chlorineOK = data.chlorine >= 0.1 && data.chlorine <= 0.5;
+            const phOK = data.pH === null || data.pH === '' || (data.pH >= 6.5 && data.pH <= 8.5);
+            const allOK = turbidityOK && chlorineOK && phOK;
+
+            // צבעים
+            const COLOR_PRIMARY = "0077BE";
+            const COLOR_DANGER = "D62828";
+            const COLOR_SUCCESS = "06A77D";
+
+            // פונקציה ליצירת פסקה עם RTL
+            function rtlPara(text, options = {}) {
+                return new Paragraph({
+                    bidirectional: true,
+                    alignment: options.align || AlignmentType.RIGHT,
+                    spacing: { after: 100 },
+                    children: [
+                        new TextRun({
+                            text: text,
+                            rightToLeft: true,
+                            bold: options.bold || false,
+                            size: options.size || 22,
+                            color: options.color,
+                            font: "Arial"
+                        })
+                    ]
+                });
+            }
+
+            // פונקציה ליצירת תא בטבלה
+            function makeCell(text, options = {}) {
+                return new TableCell({
+                    children: [
+                        new Paragraph({
+                            bidirectional: true,
+                            alignment: AlignmentType.RIGHT,
+                            children: [
+                                new TextRun({
+                                    text: text,
+                                    rightToLeft: true,
+                                    bold: options.bold || false,
+                                    size: 22,
+                                    font: "Arial"
+                                })
+                            ]
+                        })
+                    ],
+                    width: { size: options.width || 50, type: WidthType.PERCENTAGE },
+                    shading: options.shading ? { fill: options.shading, type: ShadingType.CLEAR } : undefined
+                });
+            }
+
+            // יצירת מימדים מותאמים לתמונה
+            function getImageSize(dim) {
+                const maxWidth = 400;
+                const ratio = dim.height / dim.width;
+                return {
+                    width: maxWidth,
+                    height: Math.round(maxWidth * ratio)
+                };
+            }
+
+            const tImgSize = getImageSize(turbidityDim);
+            const cImgSize = getImageSize(chlorineDim);
+
+            // בנה את תוכן המסמך
+            const children = [];
+
+            // ====== כותרת ======
+            children.push(new Paragraph({
+                bidirectional: true,
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 100 },
+                children: [
+                    new TextRun({
+                        text: "דוח בדיקת איכות מים",
+                        rightToLeft: true,
+                        bold: true,
+                        size: 40,
+                        color: COLOR_PRIMARY,
+                        font: "Arial"
+                    })
+                ]
+            }));
+
+            children.push(new Paragraph({
+                bidirectional: true,
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 300 },
+                children: [
+                    new TextRun({
+                        text: 'הרי נצרת מפעלי מים וביוב בע"מ',
+                        rightToLeft: true,
+                        bold: true,
+                        size: 28,
+                        color: COLOR_PRIMARY,
+                        font: "Arial"
+                    })
+                ]
+            }));
+
+            // ====== פרטים כלליים ======
+            children.push(rtlPara("פרטים כלליים", { bold: true, size: 28, color: COLOR_PRIMARY }));
+
+            const infoTable = new Table({
+                rows: [
+                    new TableRow({ children: [makeCell("ישוב", { bold: true, shading: "E3F2FD" }), makeCell(data.locality)] }),
+                    new TableRow({ children: [makeCell("מספר מד מים / עמדה", { bold: true, shading: "E3F2FD" }), makeCell(data.meter)] }),
+                    new TableRow({ children: [makeCell("תאריך הבדיקה", { bold: true, shading: "E3F2FD" }), makeCell(data.date)] }),
+                    new TableRow({ children: [makeCell("שעת הבדיקה", { bold: true, shading: "E3F2FD" }), makeCell(data.testTime)] }),
+                ],
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                visuallyRightToLeft: true
+            });
+
+            children.push(infoTable);
+            children.push(new Paragraph({ children: [], spacing: { after: 200 } }));
+
+            // ====== מקור המים ======
+            if (data.waterSource) {
+                children.push(rtlPara("מקור הזנת המים", { bold: true, size: 28, color: COLOR_PRIMARY }));
+                children.push(rtlPara(data.waterSource));
+                children.push(new Paragraph({ children: [], spacing: { after: 200 } }));
+            }
+
+            // ====== עכירות ======
+            children.push(rtlPara("בדיקת עכירות", { bold: true, size: 28, color: COLOR_PRIMARY }));
+            
+            children.push(new Paragraph({
+                bidirectional: true,
+                alignment: AlignmentType.RIGHT,
+                children: [
+                    new TextRun({
+                        text: "ערך נמדד: ",
+                        rightToLeft: true,
+                        bold: true,
+                        size: 24,
+                        font: "Arial"
+                    }),
+                    new TextRun({
+                        text: `${data.turbidity} NTU`,
+                        rightToLeft: true,
+                        bold: !turbidityOK,
+                        size: 24,
+                        color: turbidityOK ? undefined : COLOR_DANGER,
+                        font: "Arial"
+                    })
+                ]
+            }));
+
+            if (!turbidityOK) {
+                children.push(rtlPara("⚠️ שים לב: ערך חריג! עכירות גבוהה מ-1 NTU", { bold: true, color: COLOR_DANGER, size: 24 }));
+            } else {
+                children.push(rtlPara("✅ תקין", { color: COLOR_SUCCESS }));
+            }
+
+            // הוסף תמונת עכירות
+            children.push(new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 200 },
+                children: [
+                    new ImageRun({
+                        data: turbidityImg,
+                        transformation: tImgSize
+                    })
+                ]
+            }));
+
+            // ====== כלור ======
+            children.push(rtlPara("בדיקת כלור נותר", { bold: true, size: 28, color: COLOR_PRIMARY }));
+            
+            children.push(new Paragraph({
+                bidirectional: true,
+                alignment: AlignmentType.RIGHT,
+                children: [
+                    new TextRun({
+                        text: "ערך נמדד: ",
+                        rightToLeft: true,
+                        bold: true,
+                        size: 24,
+                        font: "Arial"
+                    }),
+                    new TextRun({
+                        text: `${data.chlorine} mg/L`,
+                        rightToLeft: true,
+                        bold: !chlorineOK,
+                        size: 24,
+                        color: chlorineOK ? undefined : COLOR_DANGER,
+                        font: "Arial"
+                    })
+                ]
+            }));
+
+            if (!chlorineOK) {
+                children.push(rtlPara("⚠️ שים לב: ערך חריג! כלור חייב להיות בין 0.1 ל-0.5 mg/L", { bold: true, color: COLOR_DANGER, size: 24 }));
+            } else {
+                children.push(rtlPara("✅ תקין", { color: COLOR_SUCCESS }));
+            }
+
+            // הוסף תמונת כלור
+            children.push(new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 200 },
+                children: [
+                    new ImageRun({
+                        data: chlorineImg,
+                        transformation: cImgSize
+                    })
+                ]
+            }));
+
+            // ====== pH (אם הוזן) ======
+            if (data.pH !== null && data.pH !== '') {
+                children.push(rtlPara("בדיקת pH", { bold: true, size: 28, color: COLOR_PRIMARY }));
+                
+                children.push(new Paragraph({
+                    bidirectional: true,
+                    alignment: AlignmentType.RIGHT,
+                    children: [
+                        new TextRun({
+                            text: "ערך נמדד: ",
+                            rightToLeft: true,
+                            bold: true,
+                            size: 24,
+                            font: "Arial"
+                        }),
+                        new TextRun({
+                            text: `${data.pH}`,
+                            rightToLeft: true,
+                            bold: !phOK,
+                            size: 24,
+                            color: phOK ? undefined : COLOR_DANGER,
+                            font: "Arial"
+                        })
+                    ]
+                }));
+
+                if (!phOK) {
+                    children.push(rtlPara("⚠️ שים לב: ערך חריג! pH חייב להיות בין 6.5 ל-8.5", { bold: true, color: COLOR_DANGER, size: 24 }));
+                } else {
+                    children.push(rtlPara("✅ תקין", { color: COLOR_SUCCESS }));
+                }
+                children.push(new Paragraph({ children: [], spacing: { after: 200 } }));
+            }
+
+            // ====== תיאור האירוע ======
+            if (data.description) {
+                children.push(rtlPara("תיאור האירוע", { bold: true, size: 28, color: COLOR_PRIMARY }));
+                children.push(rtlPara(data.description));
+                children.push(new Paragraph({ children: [], spacing: { after: 200 } }));
+            }
+
+            // ====== סטטוס כללי ======
+            children.push(rtlPara("סטטוס כללי", { bold: true, size: 28, color: COLOR_PRIMARY }));
+            
+            if (allOK) {
+                children.push(rtlPara("✅ כל הבדיקות תקינות", { bold: true, size: 28, color: COLOR_SUCCESS }));
+            } else {
+                children.push(rtlPara("⚠️ נמצאו ערכים חריגים - נדרשת בדיקה נוספת", { bold: true, size: 28, color: COLOR_DANGER }));
+            }
+
+            // ====== חתימה ======
+            children.push(new Paragraph({ children: [], spacing: { after: 600 } }));
+            children.push(rtlPara("______________________________"));
+            children.push(rtlPara("חתימת מבצע הבדיקה", { bold: true }));
+
+            // צור את המסמך
+            const doc = new Document({
+                styles: {
+                    default: {
+                        document: {
+                            run: { font: "Arial" }
+                        }
+                    }
+                },
+                sections: [{
+                    properties: {
+                        page: {
+                            margin: { top: 1000, right: 1000, bottom: 1000, left: 1000 }
+                        }
+                    },
+                    children: children
+                }]
+            });
+
+            // ייצא ל-Blob והורד
+            const blob = await Packer.toBlob(doc);
+            const filename = `דוח_בדיקה_${data.locality}_${data.date}_${data.testTime.replace(':', '-')}.docx`;
+            saveAs(blob, filename);
+        }
 
         // ==================== Form Submission ====================
         document.getElementById('testForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const submitBtn = document.getElementById('submitBtn');
 
             if (!selectedImages.turbidity) {
                 showAlert('❌ חובה לצרף תמונת עכירות (צלם או בחר מגלריה)', 'error');
@@ -582,9 +933,11 @@
             }
 
             try {
-                showAlert('⏳ מעבד תמונות...', 'success');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = 'יוצר Word... <span class="loading-spinner"></span>';
+                showAlert('⏳ יוצר קובץ Word, נא להמתין...', 'success');
 
-                const testData = {
+                const data = {
                     locality: document.getElementById('locality').value,
                     meter: document.getElementById('meter').value,
                     date: document.getElementById('testDate').value,
@@ -593,26 +946,29 @@
                     turbidity: parseFloat(document.getElementById('turbidity').value),
                     chlorine: parseFloat(document.getElementById('chlorine').value),
                     pH: document.getElementById('pH').value ? parseFloat(document.getElementById('pH').value) : null,
-                    description: document.getElementById('description').value,
-                    turbidityImage: await fileToBase64(selectedImages.turbidity),
-                    chlorineImage: await fileToBase64(selectedImages.chlorine),
-                    timestamp: Date.now()
+                    description: document.getElementById('description').value
                 };
 
-                downloadJSON(testData);
+                await generateWordDocument(data);
                 
+                // איפוס הטופס
                 document.getElementById('testForm').reset();
                 document.getElementById('testDate').value = new Date().toISOString().split('T')[0];
-                document.getElementById('warnings').classList.remove('show');
                 document.getElementById('turbidityPreview').classList.remove('show');
                 document.getElementById('chlorinePreview').classList.remove('show');
                 selectedImages.turbidity = null;
                 selectedImages.chlorine = null;
                 document.querySelectorAll('.img-btn').forEach(b => b.classList.remove('selected'));
+                document.querySelectorAll('.field-alert').forEach(a => a.classList.remove('show'));
+                document.querySelectorAll('.field-warning').forEach(i => i.classList.remove('field-warning'));
                 
-                showAlert('✅ JSON הורד בהצלחה!\n\nהרץ את הפקודה:\npython3 water_report_generator.py בדיקה.json דוח.docx', 'success');
+                showAlert('✅ קובץ Word נוצר והורד בהצלחה!', 'success');
             } catch (error) {
-                showAlert('❌ שגיאה: ' + error.message, 'error');
+                console.error('Error:', error);
+                showAlert('❌ שגיאה ביצירת הקובץ: ' + error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '📄 צור קובץ Word';
             }
         });
 
@@ -621,16 +977,11 @@
             navigator.serviceWorker.register('sw.js')
                 .then(reg => {
                     console.log('SW registered');
-                    
-                    // בדוק עדכונים כל 30 שניות
                     setInterval(() => reg.update(), 30000);
-                    
-                    // אם יש SW חדש מחכה - הפעל אותו
                     reg.addEventListener('updatefound', () => {
                         const newWorker = reg.installing;
                         newWorker.addEventListener('statechange', () => {
                             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                // יש גרסה חדשה - הצג הודעה
                                 if (confirm('🔄 גרסה חדשה זמינה! האם לטעון מחדש?')) {
                                     newWorker.postMessage({ type: 'SKIP_WAITING' });
                                     window.location.reload();
@@ -641,7 +992,6 @@
                 })
                 .catch(err => console.log('SW failed'));
 
-            // האזן לעדכון SW
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 if (!refreshing) {
@@ -659,33 +1009,6 @@
         window.addEventListener('offline', () => {
             document.getElementById('offlineBadge').classList.add('show');
         });
-
-        // ==================== PWA Install Banner ====================
-        let deferredPrompt;
-
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            document.getElementById('installBanner').classList.add('show');
-            document.getElementById('installBanner').innerHTML = `
-                <span>💾 הוסף יישום לעמודת ההשראה שלך</span>
-                <button class="btn-primary" onclick="installApp()">הוסף</button>
-            `;
-        });
-
-        window.addEventListener('appinstalled', () => {
-            deferredPrompt = null;
-            document.getElementById('installBanner').classList.remove('show');
-        });
-
-        function installApp() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                deferredPrompt.userChoice.then(choiceResult => {
-                    deferredPrompt = null;
-                });
-            }
-        }
     </script>
 </body>
 </html>
